@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>提交信息并保存到GitHub</title>
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        #inputText {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        #submitBtn {
+            padding: 10px 20px;
+            background: #2ea44f;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #submitBtn:hover {
+            background: #2c974b;
+        }
+        #message {
+            margin-top: 20px;
+            color: green;
+        }
+        .error {
+            color: red !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h3>输入你想保存的信息</h3>
+        <textarea id="inputText" placeholder="请输入内容..."></textarea>
+        <button id="submitBtn">提交并保存</button>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        // 配置信息（请替换成你自己的！）
+        const CONFIG = {
+            owner: 'zhuangjiahaoyaoxhao',       // 你的用户名（不用改）
+            repo: 'yaoxhao202603161309',       // 你的仓库名（不用改）
+            path: 'data/input.txt',            // 保存的文件路径（不用改）
+            token: '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' // <--- 直接粘贴在这里
+        };
+
+        // 页面加载完成后绑定事件
+        document.addEventListener('DOMContentLoaded', () => {
+            const submitBtn = document.getElementById('submitBtn');
+            const inputText = document.getElementById('inputText');
+            const message = document.getElementById('message');
+
+            submitBtn.addEventListener('click', async () => {
+                const content = inputText.value.trim();
+                if (!content) {
+                    message.textContent = '请输入内容！';
+                    message.className = 'error';
+                    return;
+                }
+
+                try {
+                    message.textContent = '正在保存...';
+                    message.className = '';
+
+                    // 1. 先获取文件的SHA（如果文件不存在，SHA为空）
+                    const sha = await getFileSha();
+                    // 2. 提交内容到GitHub
+                    const result = await saveContentToGitHub(content, sha);
+
+                    if (result) {
+                        inputText.value = '';
+                        message.textContent = '保存成功！';
+                    }
+                } catch (err) {
+                    console.error('保存失败：', err);
+                    message.textContent = `保存失败：${err.message}`;
+                    message.className = 'error';
+                }
+            });
+        });
+
+        /**
+         * 获取文件的SHA（用于更新文件）
+         */
+        async function getFileSha() {
+            const url = `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${CONFIG.path}`;
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `token ${CONFIG.token}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            if (response.status === 404) {
+                return ''; // 文件不存在，返回空SHA
+            }
+
+            if (!response.ok) {
+                throw new Error(`获取文件信息失败：${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.sha;
+        }
+
+        /**
+         * 将内容保存到GitHub仓库
+         * @param {string} content - 要保存的内容
+         * @param {string} sha - 文件的SHA（更新文件需要）
+         */
+        async function saveContentToGitHub(content, sha) {
+            // 将内容转为Base64编码（GitHub API要求）
+            const encodedContent = btoa(unescape(encodeURIComponent(content + '\n\n'))); // 加换行分隔不同提交
+
+            const url = `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${CONFIG.path}`;
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${CONFIG.token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Add new input: ${new Date().toLocaleString()}`, // 提交信息
+                    content: encodedContent, // Base64编码的内容
+                    sha: sha, // 文件SHA（新建文件时可以不传）
+                    branch: 'main' // 你的仓库主分支（如果是master请修改）
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.message || `HTTP错误：${response.status}`);
+            }
+
+            return true;
+        }
+    </script>
+</body>
+</html>
